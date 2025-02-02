@@ -3,11 +3,11 @@ from PyQt5.QtWidgets import QMainWindow
 
 import sys
 
-from Network import NetworkLogic
+from Module.Tcp import TcpLogic
 from UI.MainWindow import MainWindowLogic
 
 
-class MainWindow(MainWindowLogic, NetworkLogic):
+class MainWindow(MainWindowLogic, TcpLogic):
     def __init__(self, parent=None):
         super().__init__(parent)
         # 仅保留TCP服务端相关信号连接
@@ -15,10 +15,10 @@ class MainWindow(MainWindowLogic, NetworkLogic):
         self.disconnect_signal.connect(self.disconnect_signal_handler)
         self.tcp_signal_write_msg.connect(self.msg_write)
         self.tcp_signal_write_info.connect(self.info_write)
-        # self.tcp_server_start(1137)
 
     def link_signal_handler(self, port):
         # 仅处理TCP服务端启动
+
         self.tcp_server_start(port)
 
     def disconnect_signal_handler(self):

@@ -1,6 +1,6 @@
 from PyQt5.QtCore import pyqtSignal, QTimer
 from PyQt5.QtWidgets import QMainWindow, QMessageBox
-from Network import get_host_ip
+from Module.Tcp import get_host_ip
 from UI import MainWindowUI as UI
 
 
