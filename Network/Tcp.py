@@ -32,6 +32,7 @@ class TcpLogic:
         self.sever_th = threading.Thread(target=self.tcp_server_concurrency)
         self.sever_th.start()
         msg = "TCP服务端正在监听端口:%s\n" % str(port)
+        print(msg)
         self.tcp_signal_write_msg.emit(msg)
 
     def tcp_server_concurrency(self):
