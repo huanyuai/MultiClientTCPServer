@@ -1,3 +1,4 @@
+import numpy as np
 from PyQt5.QtCore import pyqtSignal, QTimer
 from PyQt5.QtWidgets import QMainWindow, QMessageBox
 from Module.Tcp import get_host_ip
@@ -19,14 +20,29 @@ class MainWindowLogic(QMainWindow):
         # self.__ui才可以访问窗体上的组件，包括调用setupUi函数
         # 而__ui是私有属性，在类外部创建对象，是无法通过对象访问窗体上的组件的，为了访问组件，可以定义接口，实现功能
         self.__ui.setupUi(self)
-        self.__ui.lineEdit_myIP.setText(get_host_ip())  # 显示本机IP地址
 
+        # 初始化绘图
+        self.drawGraphicsLayoutWidget()
+
+        self.__ui.lineEdit_myIP.setText(get_host_ip())  # 显示本机IP地址
         self.link_flag = self.NoLink
         self.receive_show_flag = True
         self.ReceiveCounter = 0
         # 仅保留必要信号连接
-
         self.__ui.pushButton_connect.toggled.connect(self.connect_button_toggled_handler)
+
+        # 在QWidget控件提升为pyqtgraph.GraphicsLayoutWidget类型的控件上画波形
+    def drawGraphicsLayoutWidget(self):
+        # pyqtgraph.GraphicsLayoutWidget 支持的方法有：
+        # ['nextRow', 'nextCol', 'nextColumn', 'addPlot', 'addViewBox', 'addItem', 'getItem', 'addLayout', 'addLabel', 'removeItem', 'itemIndex', 'clear']
+        self.__ui.graphicsView_plot.clear()  # 清除
+        plt1 = self.__ui.graphicsView_plot.addPlot(y=np.random.normal(size=1000), title="温度")
+        self.__ui.graphicsView_plot.nextRow()  # 纵向换行
+        plt2 = self.__ui.graphicsView_plot.addPlot(y=np.random.normal(size=500), title="湿度")
+        self.__ui.graphicsView_plot.nextRow()  # 纵向换行
+        plt3 = self.__ui.graphicsView_plot.addPlot(y=np.random.normal(size=800), title="光照度")
+        self.__ui.graphicsView_plot.nextRow()  # 纵向换行
+        plt4 = self.__ui.graphicsView_plot.addPlot(y=np.random.normal(size=800), title="紫外线强度")
 
     def connect_button_toggled_handler(self, state):
         if state:
@@ -67,6 +83,11 @@ class MainWindowLogic(QMainWindow):
     def click_disconnect(self):
         self.disconnect_signal.emit()
         self.link_flag = self.NoLink
+
+
+
+
+
 
     NoLink = -1
     ServerTCP = 0

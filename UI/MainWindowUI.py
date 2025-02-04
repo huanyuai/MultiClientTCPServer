@@ -52,6 +52,8 @@ class Ui_MainWindow(object):
         self.pushButton_connect.setObjectName("pushButton_connect")
         self.gridLayout.addWidget(self.pushButton_connect, 2, 0, 1, 2)
         self.textBrowser_history = QtWidgets.QTextBrowser(self.centralwidget)
+        self.textBrowser_history.setOverwriteMode(False)
+        self.textBrowser_history.setCursorWidth(1)
         self.textBrowser_history.setObjectName("textBrowser_history")
         self.gridLayout.addWidget(self.textBrowser_history, 3, 0, 1, 2)
         self.tabWidget = QtWidgets.QTabWidget(self.centralwidget)
@@ -84,6 +86,11 @@ class Ui_MainWindow(object):
         self.tabWidget.addTab(self.tab_3, "")
         self.tab = QtWidgets.QWidget()
         self.tab.setObjectName("tab")
+        self.gridLayout_5 = QtWidgets.QGridLayout(self.tab)
+        self.gridLayout_5.setObjectName("gridLayout_5")
+        self.graphicsView_plot = GraphicsLayoutWidget(self.tab)
+        self.graphicsView_plot.setObjectName("graphicsView_plot")
+        self.gridLayout_5.addWidget(self.graphicsView_plot, 0, 0, 1, 1)
         self.tabWidget.addTab(self.tab, "")
         self.tab_2 = QtWidgets.QWidget()
         self.tab_2.setObjectName("tab_2")
@@ -102,7 +109,7 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(MainWindow)
-        self.tabWidget.setCurrentIndex(0)
+        self.tabWidget.setCurrentIndex(1)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
@@ -118,3 +125,4 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), _translate("MainWindow", "波形绘制"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), _translate("MainWindow", "报告生成"))
 from UI.toolui import ConnectButton
+from pyqtgraph import GraphicsLayoutWidget
