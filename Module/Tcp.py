@@ -19,7 +19,6 @@ def get_host_ip() -> str:
 
 
 class TcpLogic:
-    tcp_signal_write_info = pyqtSignal(str, tuple)
     tcp_signal_write_msg = pyqtSignal(str)
 
     def __init__(self):
@@ -44,7 +43,6 @@ class TcpLogic:
         self.sever_th = threading.Thread(target=self.tcp_server_concurrency)
         self.sever_th.start()
         msg = "TCP服务端正在监听端口:%s\n" % str(port)
-        print(msg)
         self.tcp_signal_write_msg.emit(msg)
 
     def tcp_server_concurrency(self):
@@ -110,9 +108,9 @@ class TcpLogic:
 
     def _process_data(self, data, address):
         client_id = f"{address[0]}:{address[1]}"
+        print(f"存入缓冲区: {client_id} - {len(data)}字节")
         self.buffer_manager.add_data(client_id, data)
-        # 原始消息通知保留
-        self.tcp_signal_write_msg.emit(f"数据已缓冲 {len(data)}字节")
+
 
     def _disconnect_client(self, client, address):
         """断开客户端连接"""

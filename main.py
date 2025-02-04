@@ -20,10 +20,9 @@ class MainWindow(MainWindowLogic, TcpLogic):
 
         # 确保信号正确连接
         self.tcp_signal_write_msg.connect(self.msg_write)
-        self.tcp_signal_write_info.connect(self.info_write)
-        # 仅保留TCP服务端相关信号连接
         self.link_signal.connect(self.link_signal_handler)
         self.disconnect_signal.connect(self.disconnect_signal_handler)
+        self.processor.update_signal.connect(self.msg_write)
 
     def link_signal_handler(self, port):
         # 仅处理TCP服务端启动
@@ -41,6 +40,10 @@ class MainWindow(MainWindowLogic, TcpLogic):
         self.processor.running = False
         self.proc_thread.join()
         super().closeEvent(event)
+
+    def set_display_format(self, show_time=True, show_client=True):
+        """设置消息显示格式"""
+        self.processor.set_display_format(show_time, show_client)
 
 
 # 主程序入口

@@ -60,23 +60,9 @@ class MainWindowLogic(QMainWindow):
         self.link_flag = self.ServerTCP
 
     def msg_write(self, msg: str):
-        """接收信息显示"""
-        print(msg)
+        """直接显示预处理好的消息"""
         self.__ui.textBrowser_history.append(msg)
-
-    def info_write(self, info: str, client_info: tuple):
-        """带客户端地址信息的显示"""
-        try:
-            ip, port = client_info
-            client_id = f"{ip}:{port}"
-            print(f"DEBUG [界面层] 收到数据 - 客户端: {client_id} 内容: {info[:50]}...")  # 显示前50字符
-            formatted = f'<font color="blue">[{client_id}] {info}</font>\n'
-            self.__ui.textBrowser_history.append(formatted)
-            self.ReceiveCounter += 1
-        except Exception as e:
-            print(f"ERROR [界面层] 处理数据异常: {str(e)}")
-            print(f"异常数据 - client_info类型: {type(client_info)} 值: {client_info}")
-            print(f"info类型: {type(info)} 值: {info[:100]}")
+        self.ReceiveCounter += 1
 
     def click_disconnect(self):
         self.disconnect_signal.emit()

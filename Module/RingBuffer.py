@@ -16,7 +16,15 @@ class ClientBuffer:
 
     def get(self, size=1024):
         with self.lock:
-            return bytes(list(self.buffer)[-size:])
+            # 获取并删除已读取数据
+            if size >= len(self.buffer):
+                data = bytes(self.buffer)
+                self.buffer.clear()
+            else:
+                data = bytes(list(self.buffer)[-size:])
+                for _ in range(size):
+                    self.buffer.popleft()
+            return data
 
 class BufferManager:
     def __init__(self):

@@ -89,7 +89,14 @@
        </widget>
       </item>
       <item row="3" column="0" colspan="2">
-       <widget class="QTextBrowser" name="textBrowser_history"/>
+       <widget class="QTextBrowser" name="textBrowser_history">
+        <property name="overwriteMode">
+         <bool>false</bool>
+        </property>
+        <property name="cursorWidth">
+         <number>1</number>
+        </property>
+       </widget>
       </item>
       <item row="0" column="2" rowspan="6">
        <widget class="QTabWidget" name="tabWidget">
