@@ -64,13 +64,19 @@ class MainWindowLogic(QMainWindow):
         print(msg)
         self.__ui.textBrowser_history.append(msg)
 
-    def info_write(self, info: str, client_info: str):
-        """带客户端信息的显示"""
-        formatted = f'<font color="blue">[{client_info}] {info}</font>\n'
-        print(formatted)
-        self.__ui.textBrowser_history.append(formatted)
-        self.ReceiveCounter += 1
-        # self.counter_signal.emit(0, self.ReceiveCounter)
+    def info_write(self, info: str, client_info: tuple):
+        """带客户端地址信息的显示"""
+        try:
+            ip, port = client_info
+            client_id = f"{ip}:{port}"
+            print(f"DEBUG [界面层] 收到数据 - 客户端: {client_id} 内容: {info[:50]}...")  # 显示前50字符
+            formatted = f'<font color="blue">[{client_id}] {info}</font>\n'
+            self.__ui.textBrowser_history.append(formatted)
+            self.ReceiveCounter += 1
+        except Exception as e:
+            print(f"ERROR [界面层] 处理数据异常: {str(e)}")
+            print(f"异常数据 - client_info类型: {type(client_info)} 值: {client_info}")
+            print(f"info类型: {type(info)} 值: {info[:100]}")
 
     def click_disconnect(self):
         self.disconnect_signal.emit()

@@ -2,19 +2,28 @@ import PyQt5
 from PyQt5.QtWidgets import QMainWindow
 
 import sys
+import threading
 
 from Module.Tcp import TcpLogic
 from UI.MainWindow import MainWindowLogic
+from Module.RingBuffer import BufferManager
+from Module.DataProcessor import DataProcessor
 
 
 class MainWindow(MainWindowLogic, TcpLogic):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.buffer_manager = BufferManager()
+        self.processor = DataProcessor(self.buffer_manager)
+        self.proc_thread = threading.Thread(target=self.processor.start_processing)
+        self.proc_thread.start()
+
+        # 确保信号正确连接
+        self.tcp_signal_write_msg.connect(self.msg_write)
+        self.tcp_signal_write_info.connect(self.info_write)
         # 仅保留TCP服务端相关信号连接
         self.link_signal.connect(self.link_signal_handler)
         self.disconnect_signal.connect(self.disconnect_signal_handler)
-        self.tcp_signal_write_msg.connect(self.msg_write)
-        self.tcp_signal_write_info.connect(self.info_write)
 
     def link_signal_handler(self, port):
         # 仅处理TCP服务端启动
@@ -27,6 +36,11 @@ class MainWindow(MainWindowLogic, TcpLogic):
 
     def run(self):
         self.show()  # 显示界面
+
+    def closeEvent(self, event):
+        self.processor.running = False
+        self.proc_thread.join()
+        super().closeEvent(event)
 
 
 # 主程序入口

@@ -1,6 +1,8 @@
 import socket
 import threading
 from time import sleep
+import select
+import errno  # 添加errno模块
 
 from PyQt5.QtCore import pyqtSignal
 
@@ -17,7 +19,7 @@ def get_host_ip() -> str:
 
 
 class TcpLogic:
-    tcp_signal_write_info = pyqtSignal(str, int)
+    tcp_signal_write_info = pyqtSignal(str, tuple)
     tcp_signal_write_msg = pyqtSignal(str)
 
     def __init__(self):
@@ -26,15 +28,16 @@ class TcpLogic:
         self.client_th = None
         self.client_socket_list = list()
         self.link_flag = self.NoLink  # 用于标记是否开启了连接
+        # self.tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        self.buffer_manager = None  # 由MainWindow注入
 
     def tcp_server_start(self, port: int) -> None:
         """
         功能函数，TCP服务端开启的方法
         """
         self.tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # 取消主动断开连接四次握手后的TIME_WAIT状态
         self.tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # 设定套接字为非阻塞式
+        self.tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65535)  # 增大接收缓冲区
         self.tcp_socket.setblocking(False)
         self.tcp_socket.bind(("", port))
         self.tcp_socket.listen(5)  # 限制最大同时等待连接数
@@ -45,40 +48,87 @@ class TcpLogic:
         self.tcp_signal_write_msg.emit(msg)
 
     def tcp_server_concurrency(self):
-        """
-        功能函数，供创建线程的方法；
-        使用子线程用于监听并创建连接，使主线程可以继续运行，以免无响应
-        使用非阻塞式并发用于接收客户端消息，减少系统资源浪费，使软件轻量化
-
-        :return: None
-        """
-        while True:
+        """重构select监听逻辑"""
+        inputs = [self.tcp_socket]
+        while getattr(threading, "do_run", True):
             try:
-                client_socket, client_address = self.tcp_socket.accept()
-            except Exception as ret:
-                sleep(0.002)
-            else:
-                client_socket.setblocking(False)
-                # 将创建的客户端套接字存入列表,client_address为ip和端口的元组
-                self.client_socket_list.append((client_socket, client_address))
-                msg = f"TCP服务端已连接IP:{client_address[0]}端口:{client_address[1]}\n"
-                self.tcp_signal_write_msg.emit(msg)
-            # 轮询客户端套接字列表，接收数据
-            for client, address in self.client_socket_list:
-                try:
-                    recv_msg = client.recv(4096)
-                except Exception as ret:
-                    pass
-                else:
-                    if recv_msg:
-                        info = recv_msg.decode("utf-8")
-                        msg = f"来自IP:{address[0]}端口:{address[1]}:"
-                        self.tcp_signal_write_msg.emit(msg)
-                        self.tcp_signal_write_info.emit(info, self.InfoRec)
-
+                read_list = inputs + [client[0] for client in self.client_socket_list]
+                readable, _, _ = select.select(read_list, [], [], 0.1)
+                
+                for sock in readable:
+                    if sock is self.tcp_socket:
+                        self._accept_new_connection()
                     else:
-                        client.close()
-                        self.client_socket_list.remove((client, address))
+                        self._handle_client_data(sock)
+                    
+                self._check_disconnections()
+
+            except Exception as e:
+                print(f"服务器异常: {e}")
+                break
+
+    def _accept_new_connection(self):
+        try:
+            client_socket, client_address = self.tcp_socket.accept()
+            client_socket.setblocking(False)
+            self.client_socket_list.append((client_socket, client_address))
+            print(f"[网络] 新连接: {client_address}")
+            msg = f"TCP服务端已连接IP:{client_address[0]}端口:{client_address[1]}\n"
+            self.tcp_signal_write_msg.emit(msg)
+        except BlockingIOError:
+            pass
+
+    def _handle_client_data(self, sock):
+        for client, address in self.client_socket_list[:]:
+            if sock is client:
+                try:
+                    total_received = 0
+                    data = bytearray()
+                    while total_received < 1024*1024:
+                        try:
+                            chunk = client.recv(8192)
+                            if not chunk:
+                                break
+                            data.extend(chunk)
+                            total_received += len(chunk)
+                        except IOError as e:
+                            if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
+                                break  # 非阻塞模式下无数据可读
+                            else:
+                                raise  # 重新抛出其他异常
+                                
+                    if data:
+                        print(f"[网络] 收到来自 {address} 的 {len(data)}字节数据")
+                        self._process_data(data, address)
+                    else:
+                        print(f"[网络] 客户端 {address} 断开连接")
+                        self._disconnect_client(client, address)
+                    
+                except ConnectionResetError:
+                    print(f"[网络] 客户端 {address} 异常断开")
+                    self._disconnect_client(client, address)
+
+    def _process_data(self, data, address):
+        client_id = f"{address[0]}:{address[1]}"
+        self.buffer_manager.add_data(client_id, data)
+        # 原始消息通知保留
+        self.tcp_signal_write_msg.emit(f"数据已缓冲 {len(data)}字节")
+
+    def _disconnect_client(self, client, address):
+        """断开客户端连接"""
+        client.close()
+        self.client_socket_list.remove((client, address))
+        msg = f"客户端{address}已断开\n"
+        self.tcp_signal_write_msg.emit(msg)
+
+    def _check_disconnections(self):
+        """定期检查断开连接"""
+        for client, address in self.client_socket_list[:]:
+            try:
+                # 发送空数据测试连接状态
+                client.send(b'')
+            except (ConnectionResetError, BrokenPipeError):
+                self._disconnect_client(client, address)
 
     def tcp_client_start(self, ip: str, port: int) -> None:
         """
@@ -178,3 +228,6 @@ class TcpLogic:
     ClientTCP = 1
     InfoSend = 0
     InfoRec = 1
+
+    CLIENT_TIMEOUT = 60      # 客户端超时时间
+    MAX_QUEUE_SIZE = 1000    # 最大待处理事件数
