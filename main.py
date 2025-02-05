@@ -23,6 +23,7 @@ class MainWindow(MainWindowLogic, TcpLogic):
         self.link_signal.connect(self.link_signal_handler)
         self.disconnect_signal.connect(self.disconnect_signal_handler)
         self.processor.update_signal.connect(self.msg_write)
+        self.processor.waveform_signal.connect(self.update_waveform)
 
     def link_signal_handler(self, port):
         # 仅处理TCP服务端启动

@@ -1,114 +1,111 @@
-import json
+"""
+数据处理器 - 负责实时处理网络数据流
+功能：
+1. 多协议数据解析
+2. 自动数据类型识别
+3. 批量波形数据处理
+4. 线程安全的消息格式化
+"""
+
 import struct
 import time
+from collections import defaultdict
 from PyQt5.QtCore import pyqtSignal, QObject
 
-class DataParser:
-    @staticmethod
-    def detect_type(data: bytes) -> str:
-        """更精确的数据类型检测"""
-        try:
-            # 优先检测文本
-            text = data.decode('utf-8')
-            if all(31 < c < 127 or c in (9,10,13) for c in data):  # 可打印ASCII字符
-                return 'text'
-            return 'hex'
-        except UnicodeDecodeError:
-            return 'hex'
-
 class DataProcessor(QObject):
-    update_signal = pyqtSignal(str)  # (格式化后的消息)
+    """主数据处理引擎"""
+    update_signal = pyqtSignal(str)      # 文本更新信号
+    waveform_signal = pyqtSignal(str, list)  # 波形数据信号 (客户端ID, [(时间戳, 值)])
     
     def __init__(self, buffer_manager):
+        """
+        初始化参数
+        :param buffer_manager: 环形缓冲区管理器
+        """
         super().__init__()
         self.buffer_manager = buffer_manager
         self.running = True
-        self.last_process = {}
-        self.display_options = {
-            'show_time': True,
-            'show_client': True
-        }
         
+        # 显示配置
+        self._display_config = {'show_time': True, 'show_client': True}
+        
+        # 波形处理
+        self.batch_size = 200  # 每200个点发送一次
+        self.waveform_cache = defaultdict(list)
+
     def start_processing(self):
+        """主处理循环（应在独立线程运行）"""
         while self.running:
-            processed = False
+            has_data = False
             for client_id, buffer in self.buffer_manager.buffers.items():
-                raw_data = buffer.get(4096)  # 每次获取4KB
-                if raw_data:
-                    self._process(client_id, raw_data)
-                    processed = True
-            if not processed:
-                time.sleep(0.1)  # 无数据时休眠更久
-            
-    def _process(self, client_id, data):
-        # 添加调试信息
-        print(f"[处理] {client_id} 收到 {len(data)}字节")
-        
-        # 处理间隔限制
-        if time.time() - self.last_process.get(client_id, 0) < 0.1:
-            return
-        self.last_process[client_id] = time.time()
+                if data := buffer.get(4096):  # 每次获取4KB数据
+                    self._process_client(client_id, data)
+                    has_data = True
+            if not has_data:
+                time.sleep(0.1)  # 无数据时降低CPU占用
 
-        # 解析数据类型
-        data_type = self._detect_data_type(data)
+    def _process_client(self, client_id, data):
+        """处理单个客户端数据"""
+        # 消息处理
+        self.update_signal.emit(self._format_msg(data, client_id))
         
-        # 生成显示内容
-        display_msg = self._format_display(data_type, data, client_id)
-        
-        # 解析地址
-        try:
-            ip, port = client_id.split(':')
-            address = (ip, int(port))
-        except ValueError:
-            print(f"非法客户端ID格式: {client_id}")
-            return
-        
-        # 发射信号
-        self.update_signal.emit(display_msg)
+        # 波形处理
+        if waveform := self._process_waveform(data):
+            self._handle_waveform(client_id, waveform)
 
-    def _detect_data_type(self, data: bytes) -> str:
-        """精确数据类型检测"""
-        try:
-            text = data.decode('utf-8')
-            if all(31 < c < 127 or c in (9,10,13) for c in data):
-                return 'text'
-            return 'hex'
-        except UnicodeDecodeError:
-            return 'hex'
-
-    def _format_display(self, data_type: str, data: bytes, client_id: str) -> str:
-        """生成带格式的消息"""
+    def _format_msg(self, data, client_id) -> str:
+        """生成格式化消息"""
         parts = []
-        if self.display_options['show_time']:
+        # 时间戳
+        if self._display_config['show_time']:
             parts.append(time.strftime("[%H:%M:%S]"))
-        if self.display_options['show_client']:
+        # 客户端标识
+        if self._display_config['show_client']:
             parts.append(f"[{client_id}]")
-        
-        content = self._get_content(data_type, data)
-        return ' '.join(parts + [content])
+        # 内容部分
+        parts.append(self._content_repr(data))
+        return ' '.join(parts)
 
-    def _get_content(self, data_type: str, data: bytes) -> str:
-        """获取数据内容部分"""
-        if data_type == 'text':
+    def _content_repr(self, data) -> str:
+        """数据内容表示"""
+        try:  # 尝试文本解码
             text = data.decode('utf-8', errors='replace')[:50]
-            return f'<font color="blue">文本: {text}</font>'
-        else:
-            hex_str = ' '.join(f'{b:02X}' for b in data[:8])
-            if len(data) > 8:
-                hex_str += '...'
-            return f'<font color="gray">HEX: {hex_str}</font>'
+            return self._text_repr(text) if self._is_printable(text) else self._hex_repr(data)
+        except UnicodeDecodeError:
+            return self._hex_repr(data)
 
-    def _parse_address(self, client_id):
-        ip, port = client_id.split(':')
-        return (ip, int(port)) 
+    def _process_waveform(self, data):
+        """解析波形数据并返回所有有效值"""
+        values = []
+        for i in range(0, len(data), 6):
+            packet = data[i:i+6]
+            if len(packet) == 6 and packet[:2] == b'\x62\x74':
+                value = struct.unpack('<I', packet[2:6])[0] / 1000.0
+                values.append(value)
+        return values
+
+    def _handle_waveform(self, client_id, values):
+        """完整发送所有数据点"""
+        self.waveform_signal.emit(client_id, values)  # 实时发送所有数据
+
+    @staticmethod
+    def _is_printable(text) -> bool:
+        """检查可打印字符"""
+        return all(31 < ord(c) < 127 or c in '\t\n\r' for c in text)
+
+    @staticmethod
+    def _text_repr(text) -> str:
+        """文本表示"""
+        return f'<font color="blue">文本: {text}</font>'
+
+    @staticmethod
+    def _hex_repr(data) -> str:
+        """HEX表示"""
+        hex_str = ' '.join(f'{b:02X}' for b in data)
+        return f'<font color="gray">HEX: {hex_str}</font>'
 
     def set_display_format(self, show_time=True, show_client=True):
-        """设置显示格式
-        参数：
-            show_time - 显示时间戳 (默认True)
-            show_client - 显示客户端ID (默认True)
-        """
-        self.display_options.update({
-            'show_time': show_time,
-            'show_client': show_client
-        }) 
+        """设置显示格式"""
+        self._display_config.update(show_time=show_time, show_client=show_client)
+
+
