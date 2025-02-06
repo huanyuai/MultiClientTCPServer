@@ -34,15 +34,22 @@ class DataProcessor(QObject):
         self.waveform_cache = defaultdict(list)
 
     def start_processing(self):
-        """主处理循环（应在独立线程运行）"""
+        """主处理循环（线程安全版）"""
         while self.running:
             has_data = False
-            for client_id, buffer in self.buffer_manager.buffers.items():
-                if data := buffer.get(4096):  # 每次获取4KB数据
+            # 获取当前客户端快照
+            with self.buffer_manager.lock:
+                clients = list(self.buffer_manager.buffers.items())
+            
+            for client_id, buffer in clients:
+                # 批量读取数据（8KB/次）
+                while (data := buffer.get(8192)):
                     self._process_client(client_id, data)
                     has_data = True
+                    if len(data) >= 8192 * 4:
+                        break
             if not has_data:
-                time.sleep(0.1)  # 无数据时降低CPU占用
+                time.sleep(0.05)
 
     def _process_client(self, client_id, data):
         """处理单个客户端数据"""

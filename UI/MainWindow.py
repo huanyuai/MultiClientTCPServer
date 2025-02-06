@@ -10,10 +10,9 @@ import numpy as np
 from PyQt5.QtCore import pyqtSignal, QTimer
 from PyQt5.QtWidgets import QMainWindow, QMessageBox
 from Module.Tcp import get_host_ip
-from UI import MainWindowUI as UI
+from UI import MainWindowUI
 import pyqtgraph as pg
-from collections import deque
-import time
+
 
 class MainWindowLogic(QMainWindow):
     link_signal = pyqtSignal(int)  # 仅保留服务端信号
@@ -25,15 +24,11 @@ class MainWindowLogic(QMainWindow):
         # GUI界面与逻辑分离
         super().__init__(parent)
         # self.setWindowFlags(Qt.WindowStaysOnTopHint)  # 保持窗口最前
-        #需要在定义组件之前
-        # pg.setConfigOption('background', 'w')
-        # pg.setConfigOption('foreground', 'r')
-        # pg.setConfigOption('imageAxisOrder', 'row-major')
-
-        self.__ui = UI.Ui_MainWindow()
+        self.__ui = MainWindowUI.Ui_MainWindow()
         # 创建UI对象，私有属性__ui包含了可视化设计的UI窗体上的所有组件，所以只有通过
         # self.__ui才可以访问窗体上的组件，包括调用setupUi函数
         # 而__ui是私有属性，在类外部创建对象，是无法通过对象访问窗体上的组件的，为了访问组件，可以定义接口，实现功能
+        # 需要在定义组件之前
         pg.setConfigOptions(
             useOpenGL=True,
             antialias=False,
@@ -41,10 +36,8 @@ class MainWindowLogic(QMainWindow):
             background='w',
             foreground='k'
         )
-        
-        self.__ui.setupUi(self)
 
-        # 初始化绘图
+        self.__ui.setupUi(self)
 
         self.__ui.lineEdit_myIP.setText(get_host_ip())  # 显示本机IP地址
         self.link_flag = self.NoLink
@@ -52,14 +45,12 @@ class MainWindowLogic(QMainWindow):
         self.ReceiveCounter = 0
         # 仅保留必要信号连接
         self.__ui.pushButton_connect.toggled.connect(self.connect_button_toggled_handler)
-
         # 配置绘图参数
         self.max_points = 1000  # 显示点数
         self.waveform_data = {}  # {client_id: {'curve', 'x', 'y'}}
         self.plot_row = 0
         # 启用硬件加速
         self.__ui.graphicsView_plot.useOpenGL()
-
 
     def connect_button_toggled_handler(self, state):
         if state:
@@ -79,7 +70,6 @@ class MainWindowLogic(QMainWindow):
             QMessageBox.critical(self, "错误", "请输入本地端口号")
             self.__ui.pushButton_connect.setChecked(False)
             return
-
         try:
             if not (0 < port <= 65535):
                 raise ValueError
@@ -105,37 +95,38 @@ class MainWindowLogic(QMainWindow):
         """更新指定客户端的波形"""
         if client_id not in self.waveform_data:
             self._init_client_plot(client_id)
-        
+
         data = self.waveform_data[client_id]
-        
+
         # 追加新数据
         data['y'] = np.append(data['y'], batch)
         data['x'] = np.arange(len(data['y']))  # X轴为采样点序号
-        
+
         # 更新曲线
         if len(data['y']) > self.max_points:
             data['curve'].setData(x=data['x'], y=data['y'], _callSync='off')
         else:
-            data['curve'].setData(x=data['x'][-self.max_points:], 
-                                y=data['y'][-self.max_points:], 
-                                _callSync='off')
-        
+            data['curve'].setData(x=data['x'][-self.max_points:],
+                                  y=data['y'][-self.max_points:],
+                                  _callSync='off')
+
         # 优化视图更新
         data['plot'].enableAutoRange(enable=False)  # 禁用自动范围
         if len(data['y']) > self.max_points:
-            x_range = (len(data['y'])-self.max_points, len(data['y']))
+            x_range = (len(data['y']) - self.max_points, len(data['y']))
         else:
             x_range = (0, self.max_points)
         data['plot'].setXRange(*x_range, padding=0)
-        data['plot'].setYRange(np.min(data['y'][-self.max_points:]), 
-                              np.max(data['y'][-self.max_points:]), 
-                              padding=0.1)
+        data['plot'].setYRange(np.min(data['y'][-self.max_points:]),
+                               np.max(data['y'][-self.max_points:]),
+                               padding=0.1)
 
     def _init_client_plot(self, client_id):
         """为每个客户端创建独立绘图行"""
-        plot = self.__ui.graphicsView_plot.addPlot(row=self.plot_row, col=0, title=client_id)
+        plot = self.__ui.graphicsView_plot.addPlot(row=self.plot_row, col=0)
+        plot.setTitle(title=client_id, size="8pt")
         self.plot_row += 1  # 下个客户端绘制在新行
-        
+
         # 初始化数据存储
         self.waveform_data[client_id] = {
             'plot': plot,
@@ -151,7 +142,7 @@ class MainWindowLogic(QMainWindow):
             data['curve'].setData(x=x, y=data['y'][start:end], _callSync='off')
         else:
             x = np.concatenate([np.arange(start, self.max_points),
-                               np.arange(0, end)])
+                                np.arange(0, end)])
             y_data = np.concatenate([data['y'][start:], data['y'][:end]])
             data['curve'].setData(x=x, y=y_data, _callSync='off')
 
