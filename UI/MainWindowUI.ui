@@ -29,12 +29,6 @@
       <property name="verticalSpacing">
        <number>6</number>
       </property>
-      <item row="4" column="0" colspan="2">
-       <widget class="QTextEdit" name="textEdit_send"/>
-      </item>
-      <item row="0" column="1">
-       <widget class="QLineEdit" name="lineEdit_myIP"/>
-      </item>
       <item row="1" column="1">
        <widget class="QSpinBox" name="spinBox_port">
         <property name="alignment">
@@ -48,23 +42,13 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="label">
-        <property name="layoutDirection">
-         <enum>Qt::LeftToRight</enum>
+      <item row="3" column="0" colspan="2">
+       <widget class="QTextBrowser" name="textBrowser_history">
+        <property name="overwriteMode">
+         <bool>false</bool>
         </property>
-        <property name="text">
-         <string>本机IP</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QPushButton" name="pushButton_send">
-        <property name="text">
-         <string>发送</string>
+        <property name="cursorWidth">
+         <number>1</number>
         </property>
        </widget>
       </item>
@@ -88,64 +72,71 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0" colspan="2">
-       <widget class="QTextBrowser" name="textBrowser_history">
-        <property name="overwriteMode">
-         <bool>false</bool>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="lineEdit_myIP"/>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="layoutDirection">
+         <enum>Qt::LeftToRight</enum>
         </property>
-        <property name="cursorWidth">
-         <number>1</number>
+        <property name="text">
+         <string>本机IP</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
         </property>
        </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QPushButton" name="pushButton_send">
+        <property name="text">
+         <string>发送</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QTextEdit" name="textEdit_send"/>
       </item>
       <item row="0" column="2" rowspan="6">
        <widget class="QTabWidget" name="tabWidget">
         <property name="currentIndex">
-         <number>1</number>
+         <number>0</number>
         </property>
-        <widget class="QWidget" name="tab_3">
-         <attribute name="title">
-          <string>统计信息</string>
-         </attribute>
-         <layout class="QGridLayout" name="gridLayout_4">
-          <item row="0" column="0">
-           <layout class="QGridLayout" name="gridLayout_3" columnstretch="1,3" columnminimumwidth="0,0">
-            <item row="0" column="0" colspan="2">
-             <widget class="QTableWidget" name="tableWidget_clients"/>
-            </item>
-            <item row="1" column="0" colspan="2">
-             <widget class="QTextBrowser" name="textBrowser_hex"/>
-            </item>
-            <item row="2" column="0">
-             <widget class="QPushButton" name="pushButton_clear">
-              <property name="text">
-               <string>清除</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QLabel" name="label_stats">
-              <property name="layoutDirection">
-               <enum>Qt::LeftToRight</enum>
-              </property>
-              <property name="text">
-               <string>本机IP</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-         </layout>
-        </widget>
         <widget class="QWidget" name="tab">
          <attribute name="title">
           <string>波形绘制</string>
          </attribute>
-         <layout class="QGridLayout" name="gridLayout_5">
-          <item row="0" column="0">
+         <layout class="QGridLayout" name="gridLayout_3">
+          <item row="1" column="0">
+           <widget class="QPushButton" name="pushButton_clear">
+            <property name="text">
+             <string>清空波形</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QPushButton" name="pushButton_import">
+            <property name="text">
+             <string>导入波形</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="pushButton_connect_4">
+            <property name="text">
+             <string>暂未开发</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="3">
+           <widget class="QPushButton" name="pushButton_connect_5">
+            <property name="text">
+             <string>暂未开发</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0" colspan="4">
            <widget class="GraphicsLayoutWidget" name="graphicsView_plot"/>
           </item>
          </layout>

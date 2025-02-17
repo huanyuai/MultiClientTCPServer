@@ -7,17 +7,21 @@
 """
 
 import numpy as np
-from PyQt5.QtCore import pyqtSignal, QTimer
-from PyQt5.QtWidgets import QMainWindow, QMessageBox
+from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtWidgets import QMainWindow, QMessageBox, QFileDialog
 from Module.Tcp import get_host_ip
 from UI import MainWindowUI
 import pyqtgraph as pg
+import threading
+import gc
 
 
 class MainWindowLogic(QMainWindow):
     link_signal = pyqtSignal(int)  # 仅保留服务端信号
     disconnect_signal = pyqtSignal()
     counter_signal = pyqtSignal(int, int)
+    filename_signal = pyqtSignal(str)
+    
 
     def __init__(self, parent=None):
         # 通过super调用父类构造函数，创建QWidget窗体，这样self就是一个窗体对象了
@@ -39,19 +43,29 @@ class MainWindowLogic(QMainWindow):
 
         self.__ui.setupUi(self)
 
-        self.__ui.lineEdit_myIP.setText(get_host_ip())  # 显示本机IP地址
-        self.link_flag = self.NoLink
+        self.__ui.lineEdit_myIP.setText(get_host_ip())  # 显示本机IP地址 
         self.receive_show_flag = True
         self.ReceiveCounter = 0
         # 仅保留必要信号连接
         self.__ui.pushButton_connect.toggled.connect(self.connect_button_toggled_handler)
+        self.__ui.pushButton_clear.clicked.connect(self.clear_all_waveforms)  # 连接清除按钮
+        self.__ui.pushButton_import.clicked.connect(self.openfile)  # 导入波形
+        
         # 配置绘图参数
         self.max_points = 1000  # 显示点数
         self.waveform_data = {}  # {client_id: {'curve', 'x', 'y'}}
         self.plot_row = 0
         # 启用硬件加速
         self.__ui.graphicsView_plot.useOpenGL()
-
+    def openfile(self):
+        fileName_choose, filetype = QFileDialog.getOpenFileName(self,  
+                                    "选取文件",  
+                                    '', # 起始路径 
+                                    "All Files (*);;Text Files (*.txt)")   # 设置文件扩展名过滤,用双分号间隔
+        if fileName_choose == "":
+            return
+        self.filename_signal.emit(fileName_choose)
+        
     def connect_button_toggled_handler(self, state):
         if state:
             self.click_link_handler()
@@ -89,7 +103,6 @@ class MainWindowLogic(QMainWindow):
 
     def click_disconnect(self):
         self.disconnect_signal.emit()
-        self.link_flag = self.NoLink
 
     def update_waveform(self, client_id: str, batch: list):
         """更新指定客户端的波形"""
@@ -135,22 +148,32 @@ class MainWindowLogic(QMainWindow):
             'y': np.array([], dtype=np.float32)
         }
 
-    def _refresh_plot(self, data, start, end):
-        """刷新可见区域数据"""
-        if start < end:
-            x = np.arange(start, end)
-            data['curve'].setData(x=x, y=data['y'][start:end], _callSync='off')
-        else:
-            x = np.concatenate([np.arange(start, self.max_points),
-                                np.arange(0, end)])
-            y_data = np.concatenate([data['y'][start:], data['y'][:end]])
-            data['curve'].setData(x=x, y=y_data, _callSync='off')
-
     @staticmethod
     def _gen_color(client_id) -> pg.mkPen:
         """生成客户端唯一颜色"""
         return pg.mkColor(hash(client_id) % 0xFFFFFF | 0xFF000000)
 
-    NoLink = -1
+    def clear_all_waveforms(self):
+        """安全清空所有波形数据"""
+        # 加锁防止数据竞争
+        with threading.Lock():
+            # 逐个移除客户端绘图
+            for client_id in list(self.waveform_data.keys()):
+                item = self.waveform_data[client_id]['plot']
+                self.__ui.graphicsView_plot.removeItem(item)
+            
+            # 重置数据结构
+            self.waveform_data = {}
+            self.plot_row = 0  # 重置行计数器
+            
+            # 清理图形视图缓存
+            self.__ui.graphicsView_plot.clear()
+
+        # 强制垃圾回收
+        gc.collect()
+        
+        # 打印调试信息
+        print(f"[DEBUG] 已释放 {len(self.waveform_data)} 个客户端波形数据")
+        self.statusBar().showMessage("已清除所有波形数据", 3000)  # 显示3秒
+
     ServerTCP = 0
-    InfoRec = 1
