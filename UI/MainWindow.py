@@ -14,6 +14,7 @@ from UI import MainWindowUI
 import pyqtgraph as pg
 import threading
 import gc
+import pandas as pd
 
 
 class MainWindowLogic(QMainWindow):
@@ -58,12 +59,47 @@ class MainWindowLogic(QMainWindow):
         # 启用硬件加速
         self.__ui.graphicsView_plot.useOpenGL()
     def openfile(self):
-        fileName_choose, filetype = QFileDialog.getOpenFileName(self,  
-                                    "选取文件",  
-                                    '', # 起始路径 
-                                    "All Files (*);;Text Files (*.txt)")   # 设置文件扩展名过滤,用双分号间隔
+        fileName_choose, filetype = QFileDialog.getOpenFileName(  
+            self,  
+            "选取文件",  
+            '', 
+            "All Files (*);;Text Files (*.txt);;CSV Files (*.csv)")  # 添加CSV过滤
         if fileName_choose == "":
             return
+        
+        # CSV文件处理逻辑
+        if fileName_choose.lower().endswith('.csv'):
+            try:
+                df = pd.read_csv(fileName_choose)
+                if not all(col in df.columns for col in ['AX', 'AY', 'AZ']):
+                    QMessageBox.warning(self, "格式错误", "CSV文件中未找到AX、AY、AZ列")
+                    return
+                
+                # 清除现有波形
+                self.clear_all_waveforms()
+                
+                # 分别处理三轴数据
+                for col, axis in zip(['AX', 'AY', 'AZ'], ['X轴', 'Y轴', 'Z轴']):
+                    data = df[col].astype(int).tolist()
+                    self.update_waveform(f"CSV_{axis}", data)
+                
+                # 计算矢量幅度并添加为第四条波形
+                ax_data = np.array(df['AX'].astype(int))
+                ay_data = np.array(df['AY'].astype(int))
+                az_data = np.array(df['AZ'].astype(int))
+                
+                # 计算矢量幅度: sqrt(x^2 + y^2 + z^2)
+                magnitude = np.sqrt(ax_data**2 + ay_data**2 + az_data**2).tolist()
+                self.update_waveform("CSV_矢量幅度", magnitude)
+                
+                QMessageBox.information(self, "成功", "CSV文件导入完成")
+                return
+                
+            except Exception as e:
+                QMessageBox.warning(self, "读取错误", f"CSV文件处理失败: {str(e)}")
+                return
+        
+        # 原有文件处理逻辑
         self.filename_signal.emit(fileName_choose)
         
     def connect_button_toggled_handler(self, state):
