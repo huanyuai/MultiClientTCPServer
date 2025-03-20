@@ -8,9 +8,35 @@
 """
 
 import struct  # 用于二进制数据解析
-import time   # 用于时间戳生成
-from collections import defaultdict  # 用于波形数据缓存
-from PyQt5.QtCore import pyqtSignal, QObject  # Qt信号机制支持
+import time    # 用于时间戳生成
+from PyQt5.QtCore import pyqtSignal, QObject, QThread, QMutex
+
+class DataProcessThread(QThread):
+    """数据处理线程"""
+    
+    def __init__(self, processor, parent=None):
+        """
+        初始化数据处理线程
+        :param processor: 数据处理器实例
+        :param parent: 父对象
+        """
+        super().__init__(parent)
+        self.processor = processor
+        self.running = True
+    
+    def run(self):
+        """线程运行函数"""
+        while self.running:
+            # 处理队列中的数据
+            self.processor.process_queue()
+            # 短暂休眠，减少CPU占用
+            self.msleep(30)
+    
+    def stop(self):
+        """停止线程"""
+        self.running = False
+        self.wait()
+
 
 class DataProcessor(QObject):
     """
@@ -18,17 +44,16 @@ class DataProcessor(QObject):
     继承自QObject以支持Qt信号机制
     """
     # 定义两个信号用于UI更新
-    update_signal = pyqtSignal(str)      # 文本更新信号,发送格式化后的消息字符串
-    waveform_signal = pyqtSignal(str, list)  # 波形数据信号,发送客户端ID和数据点列表
+    text_signal = pyqtSignal(str)         # 文本更新信号，发送格式化后的消息字符串
+    waveform_signal = pyqtSignal(str, list)  # 波形数据信号，发送客户端ID和数据点列表
     
-    def __init__(self, buffer_manager):
+    def __init__(self, parent=None):
         """
         初始化数据处理器
-        :param buffer_manager: 环形缓冲区管理器,用于管理所有客户端的数据缓冲
         """
-        super().__init__()
-        self.buffer_manager = buffer_manager
-        self.running = True  # 控制处理循环的标志
+        super().__init__(parent)
+        self.data_queue = {}  # 客户端数据队列
+        self.mutex = QMutex()  # 用于线程同步
         
         # 消息显示配置选项
         self._display_config = {
@@ -36,41 +61,44 @@ class DataProcessor(QObject):
             'show_client': True   # 是否显示客户端ID
         }
         
-        # 波形数据处理参数
-        self.batch_size = 200  # 批处理大小,每200个点发送一次
-        self.waveform_cache = defaultdict(list)  # 每个客户端的波形数据缓存
-
-    def start_processing(self):
+        # 创建并启动处理线程
+        self.process_thread = DataProcessThread(self, self)
+        self.process_thread.start()
+    
+    def add_data(self, client_id, data):
         """
-        主处理循环（线程安全版）
-        持续监控并处理所有客户端的数据
+        添加数据到处理队列
+        :param client_id: 客户端标识符
+        :param data: 原始数据
         """
-        while self.running:
-            has_data = False  # 数据处理标志
-            # 获取当前客户端快照,避免处理过程中的并发修改
-            with self.buffer_manager.lock:
-                clients = list(self.buffer_manager.buffers.items())
-            
-            for client_id, buffer in clients:
-                # 批量读取数据（每次最多8KB）
-                while (data := buffer.get(8192)):
-                    self._process_client(client_id, data)
-                    has_data = True
-                    # 避免单个客户端占用过多处理时间
-                    if len(data) >= 8192 * 4:
-                        break
-            # 无数据时短暂休眠,减少CPU占用
-            if not has_data:
-                time.sleep(0.03)
-
-    def _process_client(self, client_id, data):
+        self.mutex.lock()
+        if client_id not in self.data_queue:
+            self.data_queue[client_id] = []
+        self.data_queue[client_id].append(data)
+        self.mutex.unlock()
+    
+    def process_queue(self):
+        """处理队列中的所有数据"""
+        self.mutex.lock()
+        queue_snapshot = {k: v.copy() for k, v in self.data_queue.items() if v}
+        # 清空原队列
+        for client_id in queue_snapshot:
+            self.data_queue[client_id] = []
+        self.mutex.unlock()
+        
+        # 处理数据快照
+        for client_id, data_list in queue_snapshot.items():
+            for data in data_list:
+                self._process_client_data(client_id, data)
+    
+    def _process_client_data(self, client_id, data):
         """
         处理单个客户端的数据
         :param client_id: 客户端标识符
         :param data: 待处理的原始数据
         """
         # 生成并发送消息到UI
-        self.update_signal.emit(self._format_msg(data, client_id))
+        self.text_signal.emit(self._format_msg(data, client_id))
         
         # 尝试解析波形数据并处理
         if waveform := self._process_waveform(data):
@@ -121,7 +149,6 @@ class DataProcessor(QObject):
                 values.append(value)
         return values
 
-
     @staticmethod
     def _is_printable(text) -> bool:
         """
@@ -147,7 +174,9 @@ class DataProcessor(QObject):
         :param data: 二进制数据
         :return: 带颜色的HTML字符串
         """
-        hex_str = ' '.join(f'{b:02X}' for b in data)
+        hex_str = ' '.join(f'{b:02X}' for b in data[:16])  # 只显示前16个字节
+        if len(data) > 16:
+            hex_str += f' ... (共{len(data)}字节)'
         return f'<font color="gray">HEX: {hex_str}</font>'
 
     def set_display_format(self, show_time=True, show_client=True):
@@ -157,4 +186,8 @@ class DataProcessor(QObject):
         :param show_client: 是否显示客户端ID
         """
         self._display_config.update(show_time=show_time, show_client=show_client)
-
+    
+    def close(self):
+        """关闭处理器，停止线程"""
+        if hasattr(self, 'process_thread'):
+            self.process_thread.stop()

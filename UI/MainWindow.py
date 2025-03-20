@@ -1,28 +1,15 @@
-"""
-主界面 - 数据可视化模块
-功能：
-1. 实时波形显示
-2. 多客户端独立视图
-3. 动态颜色分配
-"""
-
 import numpy as np
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QMainWindow, QMessageBox, QFileDialog
+from PyQt5.QtCore import pyqtSignal, QTimer
+from PyQt5.QtWidgets import QMainWindow, QMessageBox
 from Module.Tcp import get_host_ip
 from UI import MainWindowUI
 import pyqtgraph as pg
-import threading
-import gc
-import pandas as pd
 
 
 class MainWindowLogic(QMainWindow):
     link_signal = pyqtSignal(int)  # 仅保留服务端信号
     disconnect_signal = pyqtSignal()
     counter_signal = pyqtSignal(int, int)
-    filename_signal = pyqtSignal(str)
-    
 
     def __init__(self, parent=None):
         # 通过super调用父类构造函数，创建QWidget窗体，这样self就是一个窗体对象了
@@ -41,67 +28,23 @@ class MainWindowLogic(QMainWindow):
             background='w',
             foreground='k'
         )
-
         self.__ui.setupUi(self)
+        self.__ui.lineEdit_myIP.setText(get_host_ip())  # 显示本机IP地址
 
-        self.__ui.lineEdit_myIP.setText(get_host_ip())  # 显示本机IP地址 
         self.receive_show_flag = True
         self.ReceiveCounter = 0
         # 仅保留必要信号连接
+
         self.__ui.pushButton_connect.toggled.connect(self.connect_button_toggled_handler)
         self.__ui.pushButton_clear.clicked.connect(self.clear_all_waveforms)  # 连接清除按钮
-        self.__ui.pushButton_import.clicked.connect(self.openfile)  # 导入波形
-        
         # 配置绘图参数
         self.max_points = 1000  # 显示点数
         self.waveform_data = {}  # {client_id: {'curve', 'x', 'y'}}
         self.plot_row = 0
+
         # 启用硬件加速
         self.__ui.graphicsView_plot.useOpenGL()
-    def openfile(self):
-        fileName_choose, filetype = QFileDialog.getOpenFileName(  
-            self,  
-            "选取文件",  
-            '', 
-            "All Files (*);;Text Files (*.txt);;CSV Files (*.csv)")  # 添加CSV过滤
-        if fileName_choose == "":
-            return
-        
-        # CSV文件处理逻辑
-        if fileName_choose.lower().endswith('.csv'):
-            try:
-                df = pd.read_csv(fileName_choose)
-                if not all(col in df.columns for col in ['AX', 'AY', 'AZ']):
-                    QMessageBox.warning(self, "格式错误", "CSV文件中未找到AX、AY、AZ列")
-                    return
-                
-                # 清除现有波形
-                self.clear_all_waveforms()
-                
-                # 分别处理三轴数据
-                for col, axis in zip(['AX', 'AY', 'AZ'], ['X轴', 'Y轴', 'Z轴']):
-                    data = df[col].astype(int).tolist()
-                    self.update_waveform(f"CSV_{axis}", data)
-                
-                # 计算矢量幅度并添加为第四条波形
-                ax_data = np.array(df['AX'].astype(int))
-                ay_data = np.array(df['AY'].astype(int))
-                az_data = np.array(df['AZ'].astype(int))
-                
-                # 计算矢量幅度: sqrt(x^2 + y^2 + z^2)
-                magnitude = np.sqrt(ax_data**2 + ay_data**2 + az_data**2).tolist()
-                self.update_waveform("CSV_矢量幅度", magnitude)
-                
-                QMessageBox.information(self, "成功", "CSV文件导入完成")
-                return
-                
-            except Exception as e:
-                QMessageBox.warning(self, "读取错误", f"CSV文件处理失败: {str(e)}")
-                return
-        
-        # 原有文件处理逻辑
-        self.filename_signal.emit(fileName_choose)
-        
+
     def connect_button_toggled_handler(self, state):
         if state:
             self.click_link_handler()
@@ -120,6 +63,7 @@ class MainWindowLogic(QMainWindow):
             QMessageBox.critical(self, "错误", "请输入本地端口号")
             self.__ui.pushButton_connect.setChecked(False)
             return
+
         try:
             if not (0 < port <= 65535):
                 raise ValueError
@@ -127,13 +71,11 @@ class MainWindowLogic(QMainWindow):
             QMessageBox.critical(self, "错误", "无效端口号")
             self.__ui.pushButton_connect.setChecked(False)
             return
-
         self.editable(False)
         self.link_signal.emit(port)
-        self.link_flag = self.ServerTCP
 
     def msg_write(self, msg: str):
-        """直接显示预处理好的消息"""
+        """接收信息显示"""
         self.__ui.textBrowser_history.append(msg)
         self.ReceiveCounter += 1
 
@@ -192,24 +134,15 @@ class MainWindowLogic(QMainWindow):
     def clear_all_waveforms(self):
         """安全清空所有波形数据"""
         # 加锁防止数据竞争
-        with threading.Lock():
-            # 逐个移除客户端绘图
-            for client_id in list(self.waveform_data.keys()):
-                item = self.waveform_data[client_id]['plot']
-                self.__ui.graphicsView_plot.removeItem(item)
-            
-            # 重置数据结构
-            self.waveform_data = {}
-            self.plot_row = 0  # 重置行计数器
-            
-            # 清理图形视图缓存
-            self.__ui.graphicsView_plot.clear()
 
-        # 强制垃圾回收
-        gc.collect()
-        
+        for client_id in list(self.waveform_data.keys()):
+            item = self.waveform_data[client_id]['plot']
+            self.__ui.graphicsView_plot.removeItem(item)
+        # 重置数据结构
+        self.waveform_data = {}
+        self.plot_row = 0  # 重置行计数器
+        # 清理图形视图缓存
+        self.__ui.graphicsView_plot.clear()
         # 打印调试信息
         print(f"[DEBUG] 已释放 {len(self.waveform_data)} 个客户端波形数据")
         self.statusBar().showMessage("已清除所有波形数据", 3000)  # 显示3秒
-
-    ServerTCP = 0
